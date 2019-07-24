@@ -3,6 +3,7 @@ using UnityEngine;
 using System.Collections.Generic;
 using System.Text;
 using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
 
 namespace U3DExtends {
@@ -62,20 +63,21 @@ public class PrefabWin : EditorWindow
 
 	BetterList<Item> mItems = new BetterList<Item>();
 
-	GameObject draggedObject
+	GameObject[] draggedObjects
 	{
 		get
 		{
-			if (DragAndDrop.objectReferences == null) return null;
-			if (DragAndDrop.objectReferences.Length == 1) return DragAndDrop.objectReferences[0] as GameObject;
-			return null;
+			if (DragAndDrop.objectReferences == null || DragAndDrop.objectReferences.Length == 0) 
+				return null;
+			
+			return DragAndDrop.objectReferences.Where(x=>x as GameObject).Cast<GameObject>().ToArray();
 		}
 		set
 		{
 			if (value != null)
 			{
 				DragAndDrop.PrepareStartDrag();
-				DragAndDrop.objectReferences = new Object[1] { value };
+				DragAndDrop.objectReferences = value;
 				draggedObjectIsOurs = true;
 			}
 			else DragAndDrop.AcceptDrag();
@@ -280,7 +282,7 @@ public class PrefabWin : EditorWindow
 
 	void UpdateVisual ()
 	{
-		if (draggedObject == null) DragAndDrop.visualMode = DragAndDropVisualMode.Rejected;
+		if (draggedObjects == null) DragAndDrop.visualMode = DragAndDropVisualMode.Rejected;
 		else if (draggedObjectIsOurs) DragAndDrop.visualMode = DragAndDropVisualMode.Move;
 		else DragAndDrop.visualMode = DragAndDropVisualMode.Copy;
 	}
@@ -386,7 +388,7 @@ public class PrefabWin : EditorWindow
 	}
 
 	bool mReset = false;
-
+	private List<Item> _selections = new List<Item>();
 	void OnGUI ()
 	{
 		Event currentEvent = Event.current;
@@ -398,10 +400,23 @@ public class PrefabWin : EditorWindow
 		int spacingY = spacingX;
         if (mMode == Mode.DetailedMode) spacingY += 32;
 
-		GameObject dragged = draggedObject;
-		bool isDragging = (dragged != null);
+        GameObject[] draggeds = draggedObjects;
+		bool isDragging = (draggeds != null);
 		int indexUnderMouse = GetCellUnderMouse(spacingX, spacingY);
-		Item selection = isDragging ? FindItem(dragged) : null;
+
+		if (isDragging)
+		{
+			foreach (var gameObject in draggeds)
+			{
+				var result = FindItem(gameObject);
+				
+				if (result != null)
+				{
+					_selections.Add(result);
+				}
+			}
+		}
+		
         string searchFilter = EditorPrefs.GetString("PrefabWin_SearchFilter", null);
 
 		int newTab = mTab;
@@ -457,16 +472,24 @@ public class PrefabWin : EditorWindow
 		}
 		else if (type == EventType.DragPerform)
 		{
-			if (dragged != null)
+			if (draggeds != null)
 			{
-				if (selection != null)
+				if (_selections != null)
 				{
-					DestroyTexture(selection);
-					mItems.Remove(selection);
+					foreach (var selection in _selections)
+					{
+						DestroyTexture(selection);
+						mItems.Remove(selection);
+					}
 				}
 
-				AddItem(dragged, indexUnderMouse);
-				draggedObject = null;
+				foreach (var dragged in draggeds)
+				{
+					AddItem(dragged, indexUnderMouse);
+					++indexUnderMouse;
+				}
+				
+				draggeds = null;
 			}
 			mMouseIsInside = false;
 			currentEvent.Use();
@@ -478,23 +501,25 @@ public class PrefabWin : EditorWindow
 
 		if (!mMouseIsInside)
 		{
-			selection = null;
-			dragged = null;
+			_selections.Clear();
+			draggeds = null;
 		}
 
 		BetterList<int> indices = new BetterList<int>();
-
 		for (int i = 0; i < mItems.size; )
 		{
-			if (dragged != null && indices.size == indexUnderMouse)
+			if (draggeds != null && indices.size == indexUnderMouse)
 				indices.Add(-1);
 
-			if (mItems[i] != selection)
+			var has = _selections.Exists(item => item == mItems[i]);
+			
+			if (!has)
 			{
 				if (string.IsNullOrEmpty(searchFilter) ||
-					mItems[i].prefab.name.IndexOf(searchFilter, System.StringComparison.CurrentCultureIgnoreCase) != -1)
-						indices.Add(i);
+				    mItems[i].prefab.name.IndexOf(searchFilter, System.StringComparison.CurrentCultureIgnoreCase) != -1)
+					indices.Add(i);
 			}
+			
 			++i;
 		}
 
@@ -510,9 +535,9 @@ public class PrefabWin : EditorWindow
 
 				if (index != -1 && index < mItems.size)
 				{
-					selection = mItems[index];
-					draggedObject = selection.prefab;
-					dragged = selection.prefab;
+					_selections.Add(mItems[index]);
+					draggedObjects = _selections.Select(item => item.prefab).ToArray();
+					draggeds = _selections.Select(item=>item.prefab).ToArray();
 					currentEvent.Use();
 				}
 			}
@@ -524,7 +549,7 @@ public class PrefabWin : EditorWindow
 			for (int i = 0; i < indices.size; ++i)
 			{
 				int index = indices[i];
-				Item ent = (index != -1) ? mItems[index] : selection;
+				Item ent = (index != -1) ? mItems[index] : _selections.Count == 0 ? null : _selections[0];
 
 				if (ent != null && ent.prefab == null)
 				{
