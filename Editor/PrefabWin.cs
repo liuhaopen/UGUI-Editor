@@ -9,9 +9,12 @@ using System.Text.RegularExpressions;
 namespace U3DExtends {
 public class PrefabWin : EditorWindow
 {
+	private static int _labelDefaultFontSize;
+
     [MenuItem("Window/PrefabWin", false, 9)]
     static public void OpenPrefabTool()
     {
+	    _labelDefaultFontSize = EditorStyles.label.fontSize;
         PrefabWin prefabWin = (PrefabWin)EditorWindow.GetWindow<PrefabWin>(false, "Prefab Win", true);
 		prefabWin.autoRepaintOnSceneChange = true;
 		prefabWin.Show();
@@ -98,10 +101,11 @@ public class PrefabWin : EditorWindow
 		}
 	}
 
+	
 	void OnEnable ()
 	{
 		instance = this;
-
+		
 		Load();
 
 		mContent = new GUIContent();
@@ -615,6 +619,17 @@ public class PrefabWin : EditorWindow
 					if (ent.tex != null)
 					{
 						GUI.DrawTexture(inner, ent.tex);
+						var labelPos = new Rect(inner);
+						var labelStyle = EditorStyles.label;
+						labelPos.height = labelStyle.lineHeight;
+						labelPos.y = inner.height - labelPos.height + 5;
+						labelStyle.fontSize = (int) (_labelDefaultFontSize * SizePercent);
+						labelStyle.alignment = TextAnchor.LowerCenter;
+						{
+							GUI.Label(labelPos, ent.prefab.name,labelStyle);
+						}
+						labelStyle.alignment = TextAnchor.UpperLeft;
+						labelStyle.fontSize = _labelDefaultFontSize;
 					}
 					else if (mMode != Mode.DetailedMode)
 					{
